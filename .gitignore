@@ -1,0 +1,6 @@
+*.o
+*.skel.h
+vmlinux.h
+bootstrap
+.output/
+*.orig
