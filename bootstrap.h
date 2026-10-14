@@ -15,6 +15,7 @@ struct event {
 	char comm[TASK_COMM_LEN];
 	char filename[MAX_FILENAME_LEN];
 	bool exit_event;
+	bool open_event;
 };
 
 #endif /* __BOOTSTRAP_H */

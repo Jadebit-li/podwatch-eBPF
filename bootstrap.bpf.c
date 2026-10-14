@@ -49,6 +49,7 @@ int handle_exec(struct trace_event_raw_sched_process_exec *ctx)
 	task = (struct task_struct *)bpf_get_current_task();
 
 	e->exit_event = false;
+	e->open_event = false;
         e->cgroup_id = bpf_get_current_cgroup_id();
 	e->pid = pid;
 	e->ppid = BPF_CORE_READ(task, real_parent, tgid);
@@ -100,7 +101,8 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx)
 	task = (struct task_struct *)bpf_get_current_task();
 
 	e->exit_event = true;
-        e->cgroup_id = bpf_get_current_cgroup_id();
+        e->open_event = false;
+	e->cgroup_id = bpf_get_current_cgroup_id();
 	e->duration_ns = duration_ns;
 	e->pid = pid;
 	e->ppid = BPF_CORE_READ(task, real_parent, tgid);
@@ -110,4 +112,34 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx)
 	/* send data to user-space for post-processing */
 	bpf_ringbuf_submit(e, 0);
 	return 0;
+}
+SEC("tp/syscalls/sys_enter_openat")
+int handle_openat(struct trace_event_raw_sys_enter *ctx)
+{
+        struct task_struct *task;
+        struct event *e;
+        pid_t pid;
+
+        pid = bpf_get_current_pid_tgid() >> 32;
+
+        /* 1. reserve space in the ring buffer (copy from exec) */
+	e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
+	if (!e)
+		return 0;
+        /* 2. fill in: open_event, cgroup_id, pid, comm */
+	task = (struct task_struct *)bpf_get_current_task();
+	
+	e->open_event = true;
+	e->exit_event = false;
+        e->cgroup_id = bpf_get_current_cgroup_id();
+	e->pid = pid;
+	e->ppid = BPF_CORE_READ(task, real_parent, tgid);
+	bpf_get_current_comm(&e->comm, sizeof(e->comm));
+        
+	/* 3. read the filename (see below) */
+	bpf_probe_read_user_str(&e->filename, sizeof(e->filename), (void *)ctx->args[1]);
+        
+	/* 4. submit (copy from exec) */
+	bpf_ringbuf_submit(e, 0);
+        return 0;
 }

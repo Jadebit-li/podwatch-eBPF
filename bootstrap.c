@@ -90,7 +90,12 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 			printf(" (%llums)", e->duration_ns / 1000000);
                 printf(" cg=%llu", e->cgroup_id);
 		printf("\n");
-	} else {
+	}
+	 else if (e->open_event) {
+              printf("%-8s %-5s %-16s %-7d %-7d %s cg=%llu\n", ts, "OPEN", e->comm, e->pid, e->ppid,
+                       e->filename, e->cgroup_id);
+        } 
+	else {
 		printf("%-8s %-5s %-16s %-7d %-7d %s cg=%llu\n", ts, "EXEC", e->comm, e->pid, e->ppid,
 		       e->filename, e->cgroup_id);
 	}
