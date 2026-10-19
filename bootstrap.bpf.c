@@ -113,6 +113,16 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx)
 	bpf_ringbuf_submit(e, 0);
 	return 0;
 }
+
+static __always_inline bool starts_with(const char *s, const char *prefix, int len)
+{
+        for (int i = 0; i < len; i++) {
+                if (s[i] != prefix[i])
+                        return false;
+        }
+        return true;
+}
+
 SEC("tp/syscalls/sys_enter_openat")
 int handle_openat(struct trace_event_raw_sys_enter *ctx)
 {
@@ -138,7 +148,15 @@ int handle_openat(struct trace_event_raw_sys_enter *ctx)
         
 	/* 3. read the filename (see below) */
 	bpf_probe_read_user_str(&e->filename, sizeof(e->filename), (void *)ctx->args[1]);
-        
+        const char tok[] = "/var/run/secrets/kubernetes.io/serviceaccount";
+        const char shadow[] = "/etc/shadow";
+
+        if (!starts_with(e->filename, tok, sizeof(tok) - 1) &&
+            !starts_with(e->filename, shadow, sizeof(shadow) - 1)) {
+                bpf_ringbuf_discard(e, 0);
+                return 0;
+        }
+
 	/* 4. submit (copy from exec) */
 	bpf_ringbuf_submit(e, 0);
         return 0;
