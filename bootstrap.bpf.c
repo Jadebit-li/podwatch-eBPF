@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /* Copyright (c) 2020 Facebook */
+#include <bpf/bpf_endian.h>
+#define AF_INET 2
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
@@ -50,6 +52,7 @@ int handle_exec(struct trace_event_raw_sched_process_exec *ctx)
 
 	e->exit_event = false;
 	e->open_event = false;
+        e->connect_event = false;
         e->cgroup_id = bpf_get_current_cgroup_id();
 	e->pid = pid;
 	e->ppid = BPF_CORE_READ(task, real_parent, tgid);
@@ -102,6 +105,7 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx)
 
 	e->exit_event = true;
         e->open_event = false;
+        e->connect_event = false;
 	e->cgroup_id = bpf_get_current_cgroup_id();
 	e->duration_ns = duration_ns;
 	e->pid = pid;
@@ -141,6 +145,7 @@ int handle_openat(struct trace_event_raw_sys_enter *ctx)
 	
 	e->open_event = true;
 	e->exit_event = false;
+        e->connect_event = false;
         e->cgroup_id = bpf_get_current_cgroup_id();
 	e->pid = pid;
 	e->ppid = BPF_CORE_READ(task, real_parent, tgid);
@@ -158,6 +163,46 @@ int handle_openat(struct trace_event_raw_sys_enter *ctx)
         }
 
 	/* 4. submit (copy from exec) */
+	bpf_ringbuf_submit(e, 0);
+        return 0;
+}
+
+
+SEC("tp/syscalls/sys_enter_connect")
+int handle_connect(struct trace_event_raw_sys_enter *ctx)
+{
+        struct sockaddr_in sa = {};
+        struct task_struct *task;
+        struct event *e;
+        pid_t pid;
+
+        /* get pid (copy from openat) */
+        pid = bpf_get_current_pid_tgid() >> 32;
+        /* copy the address struct from user memory */
+        bpf_probe_read_user(&sa, sizeof(sa), (void *)ctx->args[1]);
+        if (sa.sin_family != AF_INET)
+                return 0;
+
+        /* reserve space, get task (copy from openat) */
+	e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
+        if (!e)
+                return 0;
+
+        /* set the 3 labels: exit_event=false, open_event=false, connect_event=true */
+	task = (struct task_struct *)bpf_get_current_task();
+        e->open_event = false;
+        e->exit_event = false;
+        e->connect_event = true;
+
+	/* set cgroup_id, pid, ppid, comm (copy from openat) */
+	e->cgroup_id = bpf_get_current_cgroup_id();
+        e->pid = pid;
+        e->ppid = BPF_CORE_READ(task, real_parent, tgid);
+        bpf_get_current_comm(&e->comm, sizeof(e->comm));
+        e->daddr = sa.sin_addr.s_addr;
+        e->dport = bpf_ntohs(sa.sin_port);
+
+        /* submit (copy from openat) */
 	bpf_ringbuf_submit(e, 0);
         return 0;
 }

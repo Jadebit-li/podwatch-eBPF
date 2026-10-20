@@ -16,6 +16,9 @@ struct event {
 	char filename[MAX_FILENAME_LEN];
 	bool exit_event;
 	bool open_event;
+	bool connect_event;
+        unsigned int daddr;
+        unsigned short dport;
 };
 
 #endif /* __BOOTSTRAP_H */
