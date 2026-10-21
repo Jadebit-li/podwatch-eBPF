@@ -94,7 +94,14 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 	 else if (e->open_event) {
               printf("%-8s %-5s %-16s %-7d %-7d %s cg=%llu\n", ts, "OPEN", e->comm, e->pid, e->ppid,
                        e->filename, e->cgroup_id);
-        } 
+        }
+	else if (e->connect_event) {
+                printf("%-8s %-5s %-16s %-7d %-7d %u.%u.%u.%u:%u cg=%llu\n", ts, "CONN",
+                       e->comm, e->pid, e->ppid,
+                       e->daddr & 0xff, (e->daddr >> 8) & 0xff,
+                       (e->daddr >> 16) & 0xff, (e->daddr >> 24) & 0xff,
+                       e->dport, e->cgroup_id);
+	} 
 	else {
 		printf("%-8s %-5s %-16s %-7d %-7d %s cg=%llu\n", ts, "EXEC", e->comm, e->pid, e->ppid,
 		       e->filename, e->cgroup_id);
