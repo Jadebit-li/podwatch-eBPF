@@ -21,7 +21,21 @@ struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
 	__uint(max_entries, 256 * 1024);
 } rb SEC(".maps");
+struct {
+        __uint(type, BPF_MAP_TYPE_ARRAY);
+        __uint(max_entries, 1);
+        __type(key, __u32);
+        __type(value, __u64);
+} drops SEC(".maps");
 
+static __always_inline void count_drop(void)
+{
+        __u32 k = 0;
+        __u64 *v = bpf_map_lookup_elem(&drops, &k);
+
+        if (v)
+                __sync_fetch_and_add(v, 1);
+}
 const volatile unsigned long long min_duration_ns = 0;
 
 SEC("tp/sched/sched_process_exec")
@@ -44,8 +58,10 @@ int handle_exec(struct trace_event_raw_sched_process_exec *ctx)
 
 	/* reserve sample from BPF ringbuf */
 	e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
-	if (!e)
+	if (!e) {
+		count_drop();
 		return 0;
+	}
 
 	/* fill out the sample with data */
 	task = (struct task_struct *)bpf_get_current_task();
@@ -97,8 +113,10 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx)
 
 	/* reserve sample from BPF ringbuf */
 	e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
-	if (!e)
+	if (!e) {
+		count_drop();
 		return 0;
+	}
 
 	/* fill out the sample with data */
 	task = (struct task_struct *)bpf_get_current_task();
@@ -138,8 +156,10 @@ int handle_openat(struct trace_event_raw_sys_enter *ctx)
 
         /* 1. reserve space in the ring buffer (copy from exec) */
 	e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
-	if (!e)
+	if (!e) {
+		count_drop();
 		return 0;
+	}
         /* 2. fill in: open_event, cgroup_id, pid, comm */
 	task = (struct task_struct *)bpf_get_current_task();
 	
@@ -185,8 +205,10 @@ int handle_connect(struct trace_event_raw_sys_enter *ctx)
 
         /* reserve space, get task (copy from openat) */
 	e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
-        if (!e)
+        if (!e) {
+		count_drop();
                 return 0;
+	}
 
         /* set the 3 labels: exit_event=false, open_event=false, connect_event=true */
 	task = (struct task_struct *)bpf_get_current_task();

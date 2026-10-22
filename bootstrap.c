@@ -176,6 +176,15 @@ int main(int argc, char **argv)
 		}
 	}
 
+        {
+                __u32 key = 0;
+                __u64 drops = 0;
+
+                bpf_map__lookup_elem(skel->maps.drops, &key, sizeof(key),
+                                     &drops, sizeof(drops), 0);
+                fprintf(stderr, "\nDropped events: %llu\n", drops);
+        }
+
 cleanup:
 	/* Clean up */
 	ring_buffer__free(rb);
